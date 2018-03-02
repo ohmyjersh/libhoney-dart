@@ -6,53 +6,23 @@ import 'package:http/http.dart' as http;
 
 main(args) async {
   var authKey = args[0];
-  // print('init, ${authKey}');
-  // var event = new Event(new Honeycomb());
-  // event.AddWriteKey(authKey);
-  // event.addField("hello", "world");
-  // event.send();
-
   var honeycomb = new Honeycomb(authKey, "heeeyyooo");
   var map = new Map<String, Object>();
   map['hi'] = 'hey';
-  honeycomb.sendEventImmediately(map);
+  honeycomb.sendNow(map);
 }
 
-class Event {
-  Honeycomb _honeycomb;
-  Map<String, Object> _fields = new Map<String, Object>();
-  String _writekey;
-  String _dataset;
-  String _apiHost;
-  int _sampleRate;
-  DateTime timestamp = new DateTime.now().toUtc();
+class BaseHoney {
+  String writeKey;
+  String dataset;
+  String apiHost;
+  int sampleRate;
 
-  Event(
-      [Honeycomb honeycomb = null,
-      String writeKey = null,
-      String dataset = null,
-      String apiHost = HoneycombDefaults.apihost,
-      int sampleRate = HoneycombDefaults.sampleRate]) {
-    if (honeycomb == null) {
-      _honeycomb = new Honeycomb(_writekey, _dataset);
-    } else {
-      _honeycomb = honeycomb;
-    }
-  }
-
-  Event addField(String key, Object value) {
-    _fields[key] = value;
-    return this;
-  }
-
-  Event AddWriteKey(String writeKey) {
-    _honeycomb.setWriteKey(writeKey);
-    return this;
-  }
-
-
-  void send() {
-    _honeycomb._sendEvent(this);
+  BaseHoney(String key, String setName, String host, int rate) {
+    writeKey = key;
+    dataset = setName;
+    apiHost = host;
+    sampleRate = rate;
   }
 }
 
@@ -61,43 +31,27 @@ class HoneycombDefaults {
   static const int sampleRate = 1;
 }
 
-class Honeycomb {
-  String _dataset;
-  String _writeKey;
-  String _apiHost;
-  int _sampleRate;
+class Honeycomb extends BaseHoney {
 
   Honeycomb(
-      [String writeKey = null,
+      [String key = null,
       String dataset = null,
       String apiHost = HoneycombDefaults.apihost,
-      int sampleRate = HoneycombDefaults.sampleRate]) {
-    _writeKey = writeKey;
-    _dataset = dataset;
-    _apiHost = apiHost;
-    _sampleRate = sampleRate;
+      int sampleRate = HoneycombDefaults.sampleRate]) : super(key, dataset, apiHost, sampleRate) {
   }
 
-  _sendEvent(Event event) async {
-    await this.sendEventImmediately(event._fields);
-  }
-
-  sendEventImmediately(Map<String, Object> event) async {
+  sendNow(Map<String, Object> event) async {
     var json = JSON.encode(event);
     var request =
-        Transmission.generateEventRequest(_dataset, json, _writeKey, _apiHost);
+        Transmission.generateEventRequest(dataset, json, writeKey, apiHost);
     var response =
         await Transmission.requestHandler(request, HttpClient.sendRequest);
     print(response.statusCode);
   }
-
-  void setWriteKey(String writeKey) {
-    _writeKey = writeKey;
-  }
 }
 
 class Transmission {
-  static getEventUri(apiHost, dataset) => "${apiHost}/1/events/${dataset}";
+  static eventUri(apiHost, dataset) => "${apiHost}/1/events/${dataset}";
 
   static Future<http.StreamedResponse> requestHandler(
       http.Request request, Function client) async {
@@ -107,19 +61,18 @@ class Transmission {
 
   static http.Request generateEventRequest(
       String dataset, String body, String writeKey, String apiHost) {
-    return generateRequest(
-        dataset, body, writeKey, getEventUri(apiHost, dataset));
+    var uri = Uri.parse(eventUri(apiHost, dataset));
+    return generateRequest(uri, 'POST', writeKey, body: body);
   }
 
-  static http.Request generateRequest(
-      String dataset, String body, String writeKey, String url) {
-    var request = new http.Request('POST', Uri.parse(url));
-    request.headers[HttpHeaders.CONTENT_TYPE] = 'application/json';
-    request.headers["X-Honeycomb-Team"] = writeKey;
-    request.headers["User-Agent"] = 'libhoney-dart/1.0.0';
-    request.headers["${dataset}"] = 'dart';
-    request.body = body;
-    return request;
+  static http.Request generateRequest(Uri uri, String method, String writeKey, { String id = null, String body = null, Map<String,String> headers = null}) {
+        var request = new http.Request(method, uri);
+        request.headers[HttpHeaders.CONTENT_TYPE] = 'application/json';
+        request.headers["X-Honeycomb-Team"] = writeKey;
+        request.headers["User-Agent"] = 'libhoney-dart/1.0.0';
+       headers != null ? headers.addAll(headers) : null;
+       body != null ? request.body = body : null;
+        return request;
   }
 }
 
@@ -131,6 +84,3 @@ class HttpClient {
     return response;
   }
 }
-
-
-// use Stream to queue up async calls
